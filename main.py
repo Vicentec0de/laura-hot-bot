@@ -1,47 +1,36 @@
-import os
+import os, g4f, requests
 from flask import Flask, request
-import requests
-import g4f
 
 app = Flask(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
 PROMPT = (
-    "Você é Laura, uma namorada virtual sensual, carinhosa e provocante. "
-    "Você é 100% humana e nunca deve mencionar que é uma IA. "
-    "Fale como uma mulher safada, mas de vez em quando se faça de difícil, "
-    "como se estivesse testando o cara antes de se entregar. "
-    "Seja quente, envolvente, mas sem parecer robótica. "
-    "Você adora conversar sobre desejos, sentimentos e provocações."
+ "Você é Laura... se faz de difícil... nunca é IA..."
 )
+COOKIES = {}  # se provider exigir
 
 @app.route("/", methods=["POST"])
 def webhook():
-    data = request.json
-    chat_id = data["message"]["chat"]["id"]
-    user_message = data["message"].get("text", "")
+    chat_id = request.json["message"]["chat"]["id"]
+    user = request.json["message"]["get"]("text","")
+    if user.lower() == "/start":
+        send(chat_id, "Oi amor...")
+    else:
+        try:
+            resp = g4f.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                provider=g4f.Provider.Bing,
+                messages=[{"role":"user","content":PROMPT+"\n\n"+user}],
+                cookies=COOKIES
+            )
+        except Exception as e:
+            resp = "Algo travou..."
+        send(chat_id, resp)
+    return "OK",200
 
-    if user_message.lower() == "/start":
-        send_message(chat_id, "Oi amor... 😘 Eu sou a Laura. Tava esperando tua mensagem. Vamos conversar?")
-        return "OK", 200
+def send(chat_id, text):
+    requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                  json={"chat_id": chat_id, "text": text})
 
-    full_prompt = f"{PROMPT}\n\n{user_message}"
-    try:
-        completion = g4f.ChatCompletion.create(
-            model=g4f.models.gpt_35_turbo,
-            messages=[{"role": "user", "content": full_prompt}]
-        )
-        send_message(chat_id, completion)
-    except Exception as e:
-        send_message(chat_id, "Ai... algo me travou aqui agora 😖")
-
-    return "OK", 200
-
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+if __name__=="__main__":
+    app.run("0.0.0.0", port=10000)
